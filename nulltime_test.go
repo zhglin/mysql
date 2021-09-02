@@ -9,8 +9,10 @@
 package mysql
 
 import (
-	"database/sql"
-	"database/sql/driver"
+	//"database/sql"
+	//"database/sql/driver"
+	"github.com/opentrx/mysql/v2/pkg/database/sql"
+	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"testing"
 	"time"
 )

@@ -11,11 +11,12 @@ package mysql
 import (
 	"bytes"
 	"crypto/tls"
-	"database/sql/driver"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	//"database/sql/driver"
+	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"io"
 	"math"
 	"time"

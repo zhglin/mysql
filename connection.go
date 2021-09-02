@@ -10,11 +10,13 @@ package mysql
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	//"database/sql"
+	//"database/sql/driver"
+	"github.com/opentrx/mysql/v2/pkg/database/sql"
+	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"github.com/opentrx/seata-golang/v2/pkg/client/config"
 	"github.com/pingcap/parser"
 	"github.com/pingcap/parser/ast"

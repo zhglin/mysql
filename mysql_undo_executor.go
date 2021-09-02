@@ -1,9 +1,10 @@
 package mysql
 
 import (
-	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	//"database/sql/driver"
+	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"strings"
 
 	"github.com/google/go-cmp/cmp"

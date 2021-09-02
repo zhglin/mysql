@@ -40,9 +40,9 @@ type Config struct {
 	Addr             string            // Network address (requires Net)
 	DBName           string            // Database name
 	Params           map[string]string // Connection parameters
-	Collation        string            // Connection collation
-	Loc              *time.Location    // Location for time.Time values
-	MaxAllowedPacket int               // Max packet size allowed
+	Collation        string            // Connection collation 连接使用的排序
+	Loc              *time.Location    // Location for time.Time values  时区
+	MaxAllowedPacket int               // Max packet size allowed 允许的最大数据包大小
 	ServerPubKey     string            // Server public key name
 	pubKey           *rsa.PublicKey    // Server public key
 	TLSConfig        string            // TLS configuration name
@@ -53,9 +53,9 @@ type Config struct {
 
 	AllowAllFiles           bool // Allow all files to be used with LOAD DATA LOCAL INFILE
 	AllowCleartextPasswords bool // Allows the cleartext client side plugin
-	AllowNativePasswords    bool // Allows the native password authentication method
+	AllowNativePasswords    bool // Allows the native password authentication method 允许本机密码验证方法
 	AllowOldPasswords       bool // Allows the old insecure password method
-	CheckConnLiveness       bool // Check connections for liveness before using them
+	CheckConnLiveness       bool // Check connections for liveness before using them 在使用之前检查连接是否活跃
 	ClientFoundRows         bool // Return number of matching rows instead of rows changed
 	ColumnsWithAlias        bool // Prepend table alias to column names
 	InterpolateParams       bool // Interpolate placeholders into query string
@@ -65,6 +65,7 @@ type Config struct {
 }
 
 // NewConfig creates a new Config and sets default values.
+// 创建具有默认值的config
 func NewConfig() *Config {
 	return &Config{
 		Collation:            defaultCollation,
@@ -288,8 +289,11 @@ func (cfg *Config) FormatDSN() string {
 }
 
 // ParseDSN parses the DSN string to a Config
+// 解析DSN字符串到配置
+// root:123456@tcp(127.0.0.1:3306)/seata_order?timeout=5s&readTimeout=5s&writeTimeout=1s&parseTime=true&loc=Local&charset=utf8mb4,utf8
 func ParseDSN(dsn string) (cfg *Config, err error) {
 	// New config with some default values
+	// 带有一些默认值的新配置
 	cfg = NewConfig()
 
 	// [user[:password]@][net[(addr)]]/dbname[?param1=value1&paramN=valueN]
@@ -301,9 +305,11 @@ func ParseDSN(dsn string) (cfg *Config, err error) {
 			var j, k int
 
 			// left part is empty if i <= 0
+			// /分隔成两半
 			if i > 0 {
 				// [username[:password]@][protocol[(address)]]
 				// Find the last '@' in dsn[:i]
+				// 用户名，密码
 				for j = i; j >= 0; j-- {
 					if dsn[j] == '@' {
 						// username[:password]
@@ -322,6 +328,7 @@ func ParseDSN(dsn string) (cfg *Config, err error) {
 
 				// [protocol[(address)]]
 				// Find the first '(' in dsn[j+1:i]
+				// addr，net
 				for k = j + 1; k < i; k++ {
 					if dsn[k] == '(' {
 						// dsn[i-1] must be == ')' if an address is specified
@@ -366,6 +373,8 @@ func ParseDSN(dsn string) (cfg *Config, err error) {
 
 // parseDSNParams parses the DSN "query string"
 // Values must be url.QueryEscape'ed
+// 解析DSN“查询字符串”的值必须是url
+// timeout=5s&readTimeout=5s&writeTimeout=1s&parseTime=true&loc=Local&charset=utf8mb4,utf8
 func parseDSNParams(cfg *Config, params string) (err error) {
 	for _, v := range strings.Split(params, "&") {
 		param := strings.SplitN(v, "=", 2)

@@ -10,11 +10,13 @@ package mysql
 
 import (
 	"crypto/tls"
-	"database/sql"
-	"database/sql/driver"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	//"database/sql"
+	//"database/sql/driver"
+	"github.com/opentrx/mysql/v2/pkg/database/sql"
+	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"io"
 	"reflect"
 	"strconv"

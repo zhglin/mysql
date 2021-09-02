@@ -9,7 +9,8 @@
 package mysql
 
 import (
-	"database/sql/driver"
+	//"database/sql/driver"
+	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"io"
 	"math"
 	"reflect"

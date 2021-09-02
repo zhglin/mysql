@@ -10,7 +10,8 @@ package mysql
 
 import (
 	"context"
-	"database/sql/driver"
+	//"database/sql/driver"
+	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"net"
 
 	"github.com/opentrx/seata-golang/v2/pkg/apis"

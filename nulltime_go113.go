@@ -11,7 +11,8 @@
 package mysql
 
 import (
-	"database/sql"
+	//"database/sql"
+	"github.com/opentrx/mysql/v2/pkg/database/sql"
 )
 
 // NullTime represents a time.Time that may be NULL.

@@ -10,9 +10,10 @@ package mysql
 
 import (
 	"context"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	//"database/sql/driver"
+	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"net"
 	"testing"
 )

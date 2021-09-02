@@ -10,8 +10,9 @@ package mysql
 
 import (
 	"bytes"
-	"database/sql/driver"
 	"encoding/json"
+	//"database/sql/driver"
+	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"testing"
 )
 
