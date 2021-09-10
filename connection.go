@@ -37,29 +37,37 @@ type connCtx struct {
 	sqlUndoItemsBuffer []*sqlUndoLog
 }
 
+// mysql链接
 type mysqlConn struct {
-	buf              buffer
-	netConn          net.Conn
+	buf              buffer   // 缓冲
+	netConn          net.Conn // 网络链接
 	rawConn          net.Conn // underlying connection when netConn is TLS connection.
-	affectedRows     uint64
-	insertId         uint64
-	cfg              *Config
-	maxAllowedPacket int
-	maxWriteSize     int
-	writeTimeout     time.Duration
-	flags            clientFlag
-	status           statusFlag
-	sequence         uint8
-	parseTime        bool
-	reset            bool // set when the Go SQL package calls ResetSession
+	affectedRows     uint64   // 服务器端返回的受影响的行
+	insertId         uint64   // 服务器端返回的插入的id
+	cfg              *Config  // 配置
+	maxAllowedPacket int      // 设定server所接受的包的大小
+	maxWriteSize     int      // 最大写入包大小
+
+	writeTimeout time.Duration // 写入的超时时间
+	flags        clientFlag    // 功能标记 https://dev.mysql.com/doc/internals/en/capability-flags.html#packet-Protocol::CapabilityFlags
+	status       statusFlag    // 服务器返回的状态信息
+	sequence     uint8         // 在这条链接上发送的报文序列号，通常来说是相邻两个报文的序列号是递增的，发送一次+1
+	parseTime    bool          // 是否将时间值解析成time.time
+	// 是否进行链接重置
+	reset bool // set when the Go SQL package calls ResetSession
 
 	// for context support (Go 1.8+)
-	watching bool
+	// 超时的context可能会导致客户端查询超时，但是服务端未超时，那这条链接要关闭
+	// 重用可能导致返回已超时客户端的查询结果
+	watching bool // 是否在watch中，是否使用中。只有正常查询结束才会设置成false
 	watcher  chan<- context.Context
+	// 是否关闭链接
 	closech  chan struct{}
 	finished chan<- struct{}
+	// 终止的原因
 	canceled atomicError // set non-nil if conn is canceled
-	closed   atomicBool  // set when conn is closed, before closech is closed
+	// conn是否已关闭 先关闭closech
+	closed atomicBool // set when conn is closed, before closech is closed
 
 	ctx *connCtx
 }
@@ -79,6 +87,7 @@ func (ctx *connCtx) AppendUndoItem(undoLog *sqlUndoLog) {
 }
 
 // Handles parameters set in DSN after the connection is established
+// 处理连接建立后在配置中设置的参数
 func (mc *mysqlConn) handleParams() (err error) {
 	var cmdSet strings.Builder
 	for param, val := range mc.cfg.Params {
@@ -154,6 +163,7 @@ func (mc *mysqlConn) begin(readOnly bool) (driver.Tx, error) {
 	return nil, mc.markBadConn(err)
 }
 
+// Close 关闭链接，发送quit报文
 func (mc *mysqlConn) Close() (err error) {
 	// Makes Close idempotent
 	if !mc.closed.IsSet() {
@@ -169,12 +179,17 @@ func (mc *mysqlConn) Close() (err error) {
 // function after successfully authentication, call Close instead. This function
 // is called before auth or on auth failure because MySQL will have already
 // closed the network connection.
+// 关闭网络连接并取消内部变量设置。
+// 在身份验证成功后不要调用这个函数，而是调用Close。
+// 因为MySQL已经关闭了网络连接，所以在认证失败之前或认证失败时调用这个函数。
 func (mc *mysqlConn) cleanup() {
+	// 已关闭
 	if !mc.closed.TrySet(true) {
 		return
 	}
 
 	// Makes cleanup idempotent
+	// 关闭链接
 	close(mc.closech)
 	if mc.netConn == nil {
 		return
@@ -516,19 +531,21 @@ func (mc *mysqlConn) query(query string, args []driver.Value) (*textRows, error)
 
 // Gets the value of the given MySQL System Variable
 // The returned byte slice is only valid until the next read
+// 获取给定MySQL系统变量的值。返回的字节片只在下一次读取时有效
 func (mc *mysqlConn) getSystemVar(name string) ([]byte, error) {
 	// Send command
 	if err := mc.writeCommandPacketStr(comQuery, "SELECT @@"+name); err != nil {
 		return nil, err
 	}
 
-	// Read Result
+	// Read Result resLen结果集对应的column_count
 	resLen, err := mc.readResultSetHeaderPacket()
 	if err == nil {
 		rows := new(textRows)
 		rows.mc = mc
 		rows.rs.columns = []mysqlField{{fieldType: fieldTypeVarChar}}
 
+		// 跳过columns包
 		if resLen > 0 {
 			// Columns
 			if err := mc.readUntilEOF(); err != nil {
@@ -536,25 +553,29 @@ func (mc *mysqlConn) getSystemVar(name string) ([]byte, error) {
 			}
 		}
 
+		// 只读取一行结果
 		dest := make([]driver.Value, resLen)
 		if err = rows.readRow(dest); err == nil {
-			return dest[0].([]byte), mc.readUntilEOF()
+			return dest[0].([]byte), mc.readUntilEOF() // 读取eof包
 		}
 	}
 	return nil, err
 }
 
 // finish is called when the query has canceled.
+// 在查询已被context取消时调用。
 func (mc *mysqlConn) cancel(err error) {
 	mc.canceled.Set(err)
 	mc.cleanup()
 }
 
 // finish is called when the query has succeeded.
+// 当查询成功时调用Finish。
 func (mc *mysqlConn) finish() {
 	if !mc.watching || mc.finished == nil {
 		return
 	}
+	// 调用finish时，可能已经context超时了
 	select {
 	case mc.finished <- struct{}{}:
 		mc.watching = false
@@ -735,7 +756,7 @@ func (stmt *mysqlStmt) ExecContext(ctx context.Context, args []driver.NamedValue
 	return stmt.Exec(dargs)
 }
 
-func executable(mc *mysqlConn, sql string, args []driver.Value) (bool,error) {
+func executable(mc *mysqlConn, sql string, args []driver.Value) (bool, error) {
 	parser := parser.New()
 	act, _ := parser.ParseOneStmt(sql, "", "")
 	deleteStmt, isDelete := act.(*ast.DeleteStmt)
@@ -764,7 +785,9 @@ func executable(mc *mysqlConn, sql string, args []driver.Value) (bool,error) {
 	return true, nil
 }
 
+// 监听context，所有具有context的参数都需要进行调用
 func (mc *mysqlConn) watchCancel(ctx context.Context) error {
+	// 说明上个请求是超时关闭的，非正常查询结束放回连接池的。
 	if mc.watching {
 		// Reach here if canceled,
 		// so the connection is already invalid
@@ -772,23 +795,27 @@ func (mc *mysqlConn) watchCancel(ctx context.Context) error {
 		return nil
 	}
 	// When ctx is already cancelled, don't watch it.
+	// 当ctx已经取消，不要看它。
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	// When ctx is not cancellable, don't watch it.
+	// 当ctx不能取消时，不要看它。
 	if ctx.Done() == nil {
 		return nil
 	}
 	// When watcher is not alive, can't watch it.
+	// 当watcher不是活着的时候，就不能看它了。
 	if mc.watcher == nil {
 		return nil
 	}
 
-	mc.watching = true
-	mc.watcher <- ctx
+	mc.watching = true // 标记已经在使用中了
+	mc.watcher <- ctx  // 写入当前的context
 	return nil
 }
 
+// 开启监听context
 func (mc *mysqlConn) startWatcher() {
 	watcher := make(chan context.Context, 1)
 	mc.watcher = watcher
@@ -798,16 +825,16 @@ func (mc *mysqlConn) startWatcher() {
 		for {
 			var ctx context.Context
 			select {
-			case ctx = <-watcher:
-			case <-mc.closech:
+			case ctx = <-watcher: // 获取context
+			case <-mc.closech: // 已关闭
 				return
 			}
 
 			select {
-			case <-ctx.Done():
+			case <-ctx.Done(): // 如果ctx先被取消了
 				mc.cancel(ctx.Err())
-			case <-finished:
-			case <-mc.closech:
+			case <-finished: // 查询完成
+			case <-mc.closech: // 已关闭，退出监听
 				return
 			}
 		}

@@ -537,6 +537,7 @@ func uint64ToString(n uint64) []byte {
 }
 
 // treats string value as unsigned integer representation
+// 将字符串值视为无符号整数表示形式
 func stringToInt(b []byte) int {
 	val := 0
 	for i := range b {
@@ -549,6 +550,7 @@ func stringToInt(b []byte) int {
 // returns the string read as a bytes slice, wheter the value is NULL,
 // the number of bytes read and an error, in case the string is longer than
 // the input slice
+// 根据长度分隔b中的数据
 func readLengthEncodedString(b []byte) ([]byte, bool, int, error) {
 	// Get length
 	num, isNull, n := readLengthEncodedInteger(b)
@@ -556,11 +558,11 @@ func readLengthEncodedString(b []byte) ([]byte, bool, int, error) {
 		return b[n:n], isNull, n, nil
 	}
 
-	n += int(num)
+	n += int(num) // num(一条记录的长度)+使用的字节数
 
 	// Check data length
-	if len(b) >= n {
-		return b[n-int(num) : n : n], false, n, nil
+	if len(b) >= n { // b中还有剩余的数据
+		return b[n-int(num) : n : n], false, n, nil // b[n-int(num) : n : n] 包含最后的n
 	}
 	return nil, false, n, io.EOF
 }
@@ -584,15 +586,18 @@ func skipLengthEncodedString(b []byte) (int, error) {
 }
 
 // returns the number read, whether the value is NULL and the number of bytes read
+// https://dev.mysql.com/doc/internals/en/integer.html#packet-Protocol::LengthEncodedInteger
+// 返回 从b中解析的整形数，是否null，字节长度
 func readLengthEncodedInteger(b []byte) (uint64, bool, int) {
 	// See issue #349
 	if len(b) == 0 {
 		return 0, true, 1
 	}
 
+	// 使用不同的整数长度
 	switch b[0] {
 	// 251: NULL
-	case 0xfb:
+	case 0xfb: // 代表null
 		return 0, true, 1
 
 	// 252: value of following 2
@@ -616,6 +621,7 @@ func readLengthEncodedInteger(b []byte) (uint64, bool, int) {
 }
 
 // encodes a uint64 value and appends it to the given bytes slice
+// 编码一个uint64的值，并将其追加到给定的bytes slice
 func appendLengthEncodedInteger(b []byte, n uint64) []byte {
 	switch {
 	case n <= 250:
@@ -792,21 +798,27 @@ func escapeStringQuotes(buf []byte, v string) []byte {
 type noCopy struct{}
 
 // Lock is a no-op used by -copylocks checker from `go vet`.
+// go tool vet vet.go
+// 选项 copylocks (默认启用) 会检测拥有 Lock 方法 (实际需要 pointer receiver) 的 type 是否按值传递。如果是这种情况，则会发出警告。
+// sync 包有使用该机制的例子，它有一个命名为 noCopy 的特殊 type。
 func (*noCopy) Lock() {}
 
 // atomicBool is a wrapper around uint32 for usage as a boolean value with
 // atomic access.
+// 是对uint32的包装，用于原子访问的布尔值。
 type atomicBool struct {
 	_noCopy noCopy
 	value   uint32
 }
 
 // IsSet returns whether the current boolean value is true
+// 返回当前布尔值是否为真
 func (ab *atomicBool) IsSet() bool {
 	return atomic.LoadUint32(&ab.value) > 0
 }
 
 // Set sets the value of the bool regardless of the previous value
+// 设置bool的值，而不考虑之前的值
 func (ab *atomicBool) Set(value bool) {
 	if value {
 		atomic.StoreUint32(&ab.value, 1)
@@ -816,6 +828,7 @@ func (ab *atomicBool) Set(value bool) {
 }
 
 // TrySet sets the value of the bool and returns whether the value changed
+// 设置bool的值并返回值是否已更改
 func (ab *atomicBool) TrySet(value bool) bool {
 	if value {
 		return atomic.SwapUint32(&ab.value, 1) == 0
@@ -824,6 +837,7 @@ func (ab *atomicBool) TrySet(value bool) bool {
 }
 
 // atomicError is a wrapper for atomically accessed error values
+// 是用于原子访问错误值的包装器吗
 type atomicError struct {
 	_noCopy noCopy
 	value   atomic.Value
@@ -831,14 +845,17 @@ type atomicError struct {
 
 // Set sets the error value regardless of the previous value.
 // The value must not be nil
+// 设置错误值，而不考虑以前的值。该值不能为nil
 func (ae *atomicError) Set(value error) {
 	ae.value.Store(value)
 }
 
 // Value returns the current error value
+// 返回当前错误值
 func (ae *atomicError) Value() error {
 	if v := ae.value.Load(); v != nil {
 		// this will panic if the value doesn't implement the error interface
+		// 如果值没有实现错误接口，则会出现panic
 		return v.(error)
 	}
 	return nil

@@ -17,17 +17,17 @@ import (
 
 // Various errors the driver might return. Can change between driver versions.
 var (
-	ErrInvalidConn       = errors.New("invalid connection")
-	ErrMalformPkt        = errors.New("malformed packet")
-	ErrNoTLS             = errors.New("TLS requested but server does not support TLS")
+	ErrInvalidConn       = errors.New("invalid connection")                            // 无效的连接
+	ErrMalformPkt        = errors.New("malformed packet")                              // 畸形的包
+	ErrNoTLS             = errors.New("TLS requested but server does not support TLS") // 请求TLS，但服务器不支持TLS
 	ErrCleartextPassword = errors.New("this user requires clear text authentication. If you still want to use it, please add 'allowCleartextPasswords=1' to your DSN")
 	ErrNativePassword    = errors.New("this user requires mysql native password authentication.")
 	ErrOldPassword       = errors.New("this user requires old password authentication. If you still want to use it, please add 'allowOldPasswords=1' to your DSN. See also https://github.com/go-sql-driver/mysql/wiki/old_passwords")
 	ErrUnknownPlugin     = errors.New("this authentication plugin is not supported")
-	ErrOldProtocol       = errors.New("MySQL server does not support required protocol 41+")
-	ErrPktSync           = errors.New("commands out of sync. You can't run this command now")
-	ErrPktSyncMul        = errors.New("commands out of sync. Did you run multiple statements at once?")
-	ErrPktTooLarge       = errors.New("packet for query is too large. Try adjusting the 'max_allowed_packet' variable on the server")
+	ErrOldProtocol       = errors.New("MySQL server does not support required protocol 41+")                                          // MySQL服务器不支持41+协议
+	ErrPktSync           = errors.New("commands out of sync. You can't run this command now")                                         // 命令不同步。你现在不能运行这个命令
+	ErrPktSyncMul        = errors.New("commands out of sync. Did you run multiple statements at once?")                               // 命令不同步。您是否同时运行多个语句?
+	ErrPktTooLarge       = errors.New("packet for query is too large. Try adjusting the 'max_allowed_packet' variable on the server") // 查询报文过大。处理步骤尝试在服务器上调整'max_allowed_packet'变量
 	ErrBusyBuffer        = errors.New("busy buffer")
 
 	// errBadConnNoWrite is used for connection errors where nothing was sent to the database yet.
@@ -55,6 +55,7 @@ func SetLogger(logger Logger) error {
 }
 
 // MySQLError is an error type which represents a single MySQL error
+// 是一个错误类型，它代表一个单一的MySQL错误
 type MySQLError struct {
 	Number  uint16
 	Message string

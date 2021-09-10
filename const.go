@@ -9,10 +9,10 @@
 package mysql
 
 const (
-	defaultAuthPlugin       = "mysql_native_password"
-	defaultMaxAllowedPacket = 4 << 20 // 4 MiB
-	minProtocolVersion      = 10
-	maxPacketSize           = 1<<24 - 1
+	defaultAuthPlugin       = "mysql_native_password" // auth校验 密码加密传输
+	defaultMaxAllowedPacket = 4 << 20                 // 4 MiB
+	minProtocolVersion      = 10                      // 服务器端最小的协议版本号
+	maxPacketSize           = 1<<24 - 1               // 服务器端响应的最大的报文长度
 	timeFormat              = "2006-01-02 15:04:05.999999"
 )
 

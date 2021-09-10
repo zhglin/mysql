@@ -28,16 +28,19 @@ import (
 
 // MySQLDriver is exported to make the driver directly accessible.
 // In general the driver is used via the database/sql package.
+// 导出以使驱动程序可以直接访问。通常，驱动程序是通过database/sql包使用的。
 type MySQLDriver struct{}
 
 // DialFunc is a function which can be used to establish the network connection.
 // Custom dial functions must be registered with RegisterDial
 //
 // Deprecated: users should register a DialContextFunc instead
+// 是一个可以用来建立网络连接的函数。已弃用:用户应该注册一个DialContextFunc
 type DialFunc func(addr string) (net.Conn, error)
 
 // DialContextFunc is a function which can be used to establish the network connection.
 // Custom dial functions must be registered with RegisterDialContext
+// 是一个可以用来建立网络连接的函数。自定义拨号功能必须注册到RegisterDialContext
 type DialContextFunc func(ctx context.Context, addr string) (net.Conn, error)
 
 var (
@@ -48,6 +51,8 @@ var (
 // RegisterDialContext registers a custom dial function. It can then be used by the
 // network address mynet(addr), where mynet is the registered new network.
 // The current context for the connection and its address is passed to the dial function.
+// 注册自定义拨号功能。然后它可以被网络地址mynet(addr)使用，其中mynet是注册的新网络。
+// 连接的当前上下文及其地址被传递给拨号函数。
 func RegisterDialContext(net string, dial DialContextFunc) {
 	dialsLock.Lock()
 	defer dialsLock.Unlock()
@@ -71,6 +76,7 @@ func RegisterDial(network string, dial DialFunc) {
 // Open new Connection.
 // See https://github.com/go-sql-driver/mysql#dsn-data-source-name for how
 // the DSN string is formatted
+// 实现的driver.Driver接口用户打开链接
 func (d MySQLDriver) Open(dsn string) (driver.Conn, error) {
 	cfg, err := ParseDSN(dsn)
 	if err != nil {
@@ -82,11 +88,13 @@ func (d MySQLDriver) Open(dsn string) (driver.Conn, error) {
 	return c.Connect(context.Background())
 }
 
+// 注册mysql驱动
 func init() {
 	sql.Register("mysql", &MySQLDriver{})
 }
 
 // NewConnector returns new driver.Connector.
+// 返回driver.Connector接口
 func NewConnector(cfg *Config) (driver.Connector, error) {
 	cfg = cfg.Clone()
 	// normalize the contents of cfg so calls to NewConnector have the same
@@ -98,6 +106,7 @@ func NewConnector(cfg *Config) (driver.Connector, error) {
 }
 
 // OpenConnector implements driver.DriverContext.
+// 实现driver.DriverContext的接口
 func (d MySQLDriver) OpenConnector(dsn string) (driver.Connector, error) {
 	cfg, err := ParseDSN(dsn)
 	if err != nil {

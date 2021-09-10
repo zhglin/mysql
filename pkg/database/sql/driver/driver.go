@@ -81,6 +81,8 @@ type NamedValue struct {
 // Database drivers may implement DriverContext for access
 // to contexts and to parse the name only once for a pool of connections,
 // instead of once per connection.
+// 驱动程序是数据库驱动程序必须实现的接口。
+// 数据库驱动可以实现DriverContext来访问上下文，并且只解析连接池中的名称一次，而不是每个连接一次。
 type Driver interface {
 	// Open returns a new connection to the database.
 	// The name is a string in a driver-specific format.
@@ -91,18 +93,25 @@ type Driver interface {
 	//
 	// The returned connection is only used by one goroutine at a
 	// time.
+	// Open返回到数据库的新连接。名称是驱动程序特定格式的字符串。
+	// Open可能会返回一个缓存的连接(一个之前关闭的连接)，但这样做是不必要的;
+	// SQL包维护一个空闲连接池，以便有效重用。每次只由一个goroutine使用返回的连接。
 	Open(name string) (Conn, error)
 }
 
-// If a Driver implements DriverContext, then sql.DB will call
+// DriverContext If a Driver implements DriverContext, then sql.DB will call
 // OpenConnector to obtain a Connector and then invoke
 // that Connector's Connect method to obtain each needed connection,
 // instead of invoking the Driver's Open method for each connection.
 // The two-step sequence allows drivers to parse the name just once
 // and also provides access to per-Conn contexts.
+// 如果一个Driver实现了DriverContext，那么sql.DB将调用OpenConnector来获取一个Connector，
+// 然后调用该Connector的Connect方法来获取每个需要的连接，而不是为每个连接调用Driver的Open方法。
+// 两步序列允许驱动程序只解析一次名称，并提供对每个conn上下文的访问。
 type DriverContext interface {
 	// OpenConnector must parse the name in the same format that Driver.Open
 	// parses the name parameter.
+	// OpenConnector必须以与Driver相同的格式解析名称。Open解析name参数。
 	OpenConnector(name string) (Connector, error)
 }
 
@@ -115,6 +124,8 @@ type DriverContext interface {
 // DriverContext's OpenConnector method, to allow drivers
 // access to context and to avoid repeated parsing of driver
 // configuration.
+// 连接器代表一个固定配置中的驱动程序，可以创建任意数量的等效Conns供多个goroutine使用。可以将Connector传递给sql.OpenDB
+// 允许驱动实现自己的sql.DB构造函数，或者由DriverContext的OpenConnector方法返回，允许驱动访问上下文，避免重复解析驱动配置。
 type Connector interface {
 	// Connect returns a connection to the database.
 	// Connect may return a cached connection (one previously
@@ -129,11 +140,16 @@ type Connector interface {
 	//
 	// The returned connection is only used by one goroutine at a
 	// time.
+	// 连接数据库Connect可能返回一个缓存的连接(一个之前关闭的连接)，但这样做是不必要的;
+	// SQL包维护一个空闲连接池，以便有效重用。
+	// 提供的上下文。上下文仅用于拨号目的(见net.DialContext)，不应存储或用于其他目的。
+	// 拨号时仍应使用默认超时，因为连接池可能会异步调用Connect到任何查询。每次只由一个goroutine使用返回的连接。
 	Connect(context.Context) (Conn, error)
 
 	// Driver returns the underlying Driver of the Connector,
 	// mainly to maintain compatibility with the Driver method
 	// on sql.DB.
+	// Driver返回连接器的底层Driver，主要是为了保持与sql.DB上Driver方法的兼容性。
 	Driver() Driver
 }
 
@@ -153,6 +169,8 @@ var ErrSkip = errors.New("driver: skip fast-path; continue as if unimplemented")
 // if there's a possibility that the database server might have
 // performed the operation. Even if the server sends back an error,
 // you shouldn't return ErrBadConn.
+// 应该由驱动程序返回，以向SQL包发送一个driver.Conn处于坏状态(例如服务器之前关闭了连接)，并且sql包应该在新的连接上重试。
+// 为了防止重复操作，如果数据库服务器可能已经执行了该操作，则不应该返回ErrBadConn。即使服务器返回一个错误，也不应该返回ErrBadConn。
 var ErrBadConn = errors.New("driver: bad connection")
 
 // Pinger is an optional interface that may be implemented by a Conn.
@@ -162,6 +180,9 @@ var ErrBadConn = errors.New("driver: bad connection")
 //
 // If Conn.Ping returns ErrBadConn, DB.Ping and DB.PingContext will remove
 // the Conn from pool.
+// Pinger是一个可选接口，可以由Conn实现。
+// 如果一个Conn没有实现Pinger, sql包的DB.ping和DB.PingContext将检查是否至少有一个Conn可用。
+// 如果Conn.Ping返回ErrBadConn, DB.ping和DB.PingContext将从池中删除Conn。
 type Pinger interface {
 	Ping(ctx context.Context) error
 }
@@ -288,10 +309,12 @@ type ConnBeginTx interface {
 
 // SessionResetter may be implemented by Conn to allow drivers to reset the
 // session state associated with the connection and to signal a bad connection.
+// 可能由Conn实现，以允许驱动程序重置与连接关联的会话状态，并发出坏连接的信号。
 type SessionResetter interface {
 	// ResetSession is called prior to executing a query on the connection
 	// if the connection has been used before. If the driver returns ErrBadConn
 	// the connection is discarded.
+	// 如果之前使用过连接，则在对连接执行查询之前调用。如果驱动程序返回ErrBadConn，连接将被丢弃。
 	ResetSession(ctx context.Context) error
 }
 
@@ -300,9 +323,12 @@ type SessionResetter interface {
 //
 // If implemented, drivers may return the underlying error from queries,
 // even if the connection should be discarded by the connection pool.
+// 可能由Conn实现，以允许驱动程序发出信号，判断连接是否有效或是否应该被丢弃。
+// 如果实现了，驱动程序可能会从查询返回底层错误，使连接池应该丢弃连接。
 type Validator interface {
 	// IsValid is called prior to placing the connection into the
 	// connection pool. The connection will be discarded if false is returned.
+	// 在将连接放入连接池之前调用IsValid。如果返回false，连接将被丢弃。
 	IsValid() bool
 }
 

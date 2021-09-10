@@ -26,24 +26,31 @@ import (
 // http://dev.mysql.com/doc/internals/en/client-server-protocol.html
 
 // Read packet to buffer 'data'
+// 读取链接的有效内容
 func (mc *mysqlConn) readPacket() ([]byte, error) {
-	var prevData []byte
+	var prevData []byte // 此报文之前的总长度
+	// 循环读取，防止拆包
 	for {
 		// read packet header
+		// 读取响应头 4个字节
 		data, err := mc.buf.readNext(4)
 		if err != nil {
+			// 是否是context取消
 			if cerr := mc.canceled.Value(); cerr != nil {
 				return nil, cerr
 			}
+			// 非context取消要进行链接关闭
 			errLog.Print(err)
 			mc.Close()
 			return nil, ErrInvalidConn
 		}
 
 		// packet length [24 bit]
+		// 前三个字节代表报文长度
 		pktLen := int(uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16)
 
 		// check packet sync [8 bit]
+		// 验证报文序列号
 		if data[3] != mc.sequence {
 			if data[3] > mc.sequence {
 				return nil, ErrPktSyncMul
@@ -54,18 +61,24 @@ func (mc *mysqlConn) readPacket() ([]byte, error) {
 
 		// packets with length 0 terminate a previous packet which is a
 		// multiple of (2^24)-1 bytes long
+		// 三字节能表示的最大长度是16M-1（2^24 - 1），如果要发送的数据部分大于这个长度，要进行拆包，每16M-1个长度为一包。
+		// 接收端在接受数据的时候，如果检测到包的长度是16M-1，说明后续还有数据部分，直到接收到 < 16M-1长度的数据包结束。
+		// 这意味着最后一包的数据长度可能为0.
 		if pktLen == 0 {
 			// there was no previous packet
+			// 没有以前的数据包，关闭链接
 			if prevData == nil {
 				errLog.Print(ErrMalformPkt)
 				mc.Close()
 				return nil, ErrInvalidConn
 			}
 
+			// 返回之前的数据
 			return prevData, nil
 		}
 
 		// read packet body [pktLen bytes]
+		// 读取pktLen的响应内容，去取失败校验是否是context取消，非context取消要关闭链接
 		data, err = mc.buf.readNext(pktLen)
 		if err != nil {
 			if cerr := mc.canceled.Value(); cerr != nil {
@@ -77,8 +90,10 @@ func (mc *mysqlConn) readPacket() ([]byte, error) {
 		}
 
 		// return data if this was the last packet
+		// pktLen小于maxPacketSize说明是最后一个报文
 		if pktLen < maxPacketSize {
 			// zero allocations for non-split packets
+			// 未拆包直接返回
 			if prevData == nil {
 				return data, nil
 			}
@@ -86,14 +101,18 @@ func (mc *mysqlConn) readPacket() ([]byte, error) {
 			return append(prevData, data...), nil
 		}
 
+		// 拆包
 		prevData = append(prevData, data...)
 	}
 }
 
 // Write packet buffer 'data'
+// 发送内容到服务器端 data前四个字节要空出来，用来填写head头
 func (mc *mysqlConn) writePacket(data []byte) error {
+	// 真实的数据长度
 	pktLen := len(data) - 4
 
+	// 超过报文长度限制
 	if pktLen > mc.maxAllowedPacket {
 		return ErrPktTooLarge
 	}
@@ -104,6 +123,8 @@ func (mc *mysqlConn) writePacket(data []byte) error {
 	// to be stale, and it has not performed any previous writes that
 	// could cause data corruption, so it's safe to return ErrBadConn
 	// if the check fails.
+	// 执行失效连接检查。
+	// 我们只执行这个检查对已从连接池中检出的连接的第一个查询:从连接池中检出的新连接更有可能过期，而且它没有执行任何可能导致数据损坏的先前写操作，因此如果检查失败，返回ErrBadConn是安全的。
 	if mc.reset {
 		mc.reset = false
 		conn := mc.netConn
@@ -114,12 +135,15 @@ func (mc *mysqlConn) writePacket(data []byte) error {
 		// If this connection has a ReadTimeout which we've been setting on
 		// reads, reset it to its default value before we attempt a non-blocking
 		// read, otherwise the scheduler will just time us out before we can read
+		// 如果这个连接有一个ReadTimeout，这个ReadTimeout是我们在读取时设置的，请在尝试非阻塞读取之前将其重置为默认值，否则调度程序会在我们读取之前将我们超时
 		if mc.cfg.ReadTimeout != 0 {
 			err = conn.SetReadDeadline(time.Time{})
 		}
+		// 校验链接是否有效
 		if err == nil && mc.cfg.CheckConnLiveness {
 			err = connCheck(conn)
 		}
+		// 链接失效，直接关闭链接
 		if err != nil {
 			errLog.Print("closing bad idle connection: ", err)
 			mc.Close()
@@ -143,15 +167,18 @@ func (mc *mysqlConn) writePacket(data []byte) error {
 		data[3] = mc.sequence
 
 		// Write packet
+		// 设置写入超时时间
 		if mc.writeTimeout > 0 {
 			if err := mc.netConn.SetWriteDeadline(time.Now().Add(mc.writeTimeout)); err != nil {
 				return err
 			}
 		}
 
+		// 写入长度要加上head头
 		n, err := mc.netConn.Write(data[:4+size])
 		if err == nil && n == 4+size {
 			mc.sequence++
+			// 不需要进行拆包
 			if size != maxPacketSize {
 				return nil
 			}
@@ -163,15 +190,17 @@ func (mc *mysqlConn) writePacket(data []byte) error {
 		// Handle error
 		if err == nil { // n != len(data)
 			mc.cleanup()
-			errLog.Print(ErrMalformPkt)
+			errLog.Print(ErrMalformPkt) // 发送长度不足
 		} else {
 			if cerr := mc.canceled.Value(); cerr != nil {
 				return cerr
 			}
 			if n == 0 && pktLen == len(data)-4 {
 				// only for the first loop iteration when nothing was written yet
+				// 只在第一次循环迭代时，什么都没写
 				return errBadConnNoWrite
 			}
+			// 其他异常关闭链接
 			mc.cleanup()
 			errLog.Print(err)
 		}
@@ -185,22 +214,28 @@ func (mc *mysqlConn) writePacket(data []byte) error {
 
 // Handshake Initialization Packet
 // http://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::Handshake
+// 当客户端连接到服务器时，服务器向客户端发送一个握手包。根据服务器版本和配置选项，发送初始数据包的不同变体。
+// 返回auth-plugin以及验证相关数据，plugin密码的加密方式
 func (mc *mysqlConn) readHandshakePacket() (data []byte, plugin string, err error) {
 	data, err = mc.readPacket()
 	if err != nil {
 		// for init we can rewrite this to ErrBadConn for sql.Driver to retry, since
 		// in connection initialization we don't risk retrying non-idempotent actions.
+		// 对于init，我们可以重写这个为sql的ErrBadConn。
+		// 驱动程序重试，因为在连接初始化中，我们不会冒险重试非幂等操作。
 		if err == ErrInvalidConn {
 			return nil, "", driver.ErrBadConn
 		}
 		return
 	}
 
+	// ERR包
 	if data[0] == iERR {
 		return nil, "", mc.handleErrorPacket(data)
 	}
 
-	// protocol version [1 byte]
+	// protocol version [1 byte] 协议版本号
+	// 服务器端协议版本号太低
 	if data[0] < minProtocolVersion {
 		return nil, "", fmt.Errorf(
 			"unsupported protocol version %d. Version %d or higher is required",
@@ -209,21 +244,24 @@ func (mc *mysqlConn) readHandshakePacket() (data []byte, plugin string, err erro
 		)
 	}
 
-	// server version [null terminated string]
-	// connection id [4 bytes]
+	// server version [null terminated string] 服务器版本空字符串(0x00结尾)结尾
+	// connection id [4 bytes] 4字节的服务器线程Id
 	pos := 1 + bytes.IndexByte(data[1:], 0x00) + 1 + 4
 
 	// first part of the password cipher [8 bytes]
+	// 8字节的密码的第一部分
 	authData := data[pos : pos+8]
 
 	// (filler) always 0x00 [1 byte]
 	pos += 8 + 1
 
 	// capability flags (lower 2 bytes) [2 bytes]
+	// 客户端和服务器使用功能标志来指示它们支持和想要使用哪些功能。2个字节
 	mc.flags = clientFlag(binary.LittleEndian.Uint16(data[pos : pos+2]))
 	if mc.flags&clientProtocol41 == 0 {
 		return nil, "", ErrOldProtocol
 	}
+	// 不支持ssl配置了ssl
 	if mc.flags&clientSSL == 0 && mc.cfg.tls != nil {
 		if mc.cfg.TLSConfig == "preferred" {
 			mc.cfg.tls = nil
@@ -253,11 +291,13 @@ func (mc *mysqlConn) readHandshakePacket() (data []byte, plugin string, err erro
 		//
 		// The official Python library uses the fixed length 12
 		// which seems to work but technically could have a hidden bug.
+		// 密码的第二部分[最小13字节]，
 		authData = append(authData, data[pos:pos+12]...)
 		pos += 13
 
 		// EOF if version (>= 5.5.7 and < 5.5.10) or (>= 5.6.0 and < 5.6.2)
 		// \NUL otherwise
+		// auth-plugin name
 		if end := bytes.IndexByte(data[pos:], 0x00); end != -1 {
 			plugin = string(data[pos : pos+end])
 		} else {
@@ -278,8 +318,10 @@ func (mc *mysqlConn) readHandshakePacket() (data []byte, plugin string, err erro
 
 // Client Authentication Packet
 // http://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::HandshakeResponse
+// 发送密码
 func (mc *mysqlConn) writeHandshakeResponsePacket(authResp []byte, plugin string) error {
 	// Adjust client flags based on server support
+	// 根据服务器支持调整客户端标志
 	clientFlags := clientProtocol41 |
 		clientSecureConn |
 		clientLongPassword |
@@ -309,6 +351,7 @@ func (mc *mysqlConn) writeHandshakeResponsePacket(authResp []byte, plugin string
 	if len(authRespLEI) > 1 {
 		// if the length can not be written in 1 byte, it must be written as a
 		// length encoded integer
+		// 如果长度不能以1字节的形式写入，则必须将其写入长度编码的整数
 		clientFlags |= clientPluginAuthLenEncClientData
 	}
 
@@ -437,12 +480,13 @@ func (mc *mysqlConn) writeCommandPacket(command byte) error {
 	return mc.writePacket(data)
 }
 
+// 对mysql服务器发送字符串命令
 func (mc *mysqlConn) writeCommandPacketStr(command byte, arg string) error {
 	// Reset Packet Sequence
 	mc.sequence = 0
 
-	pktLen := 1 + len(arg)
-	data, err := mc.buf.takeBuffer(pktLen + 4)
+	pktLen := 1 + len(arg)                     // 加上command的长度
+	data, err := mc.buf.takeBuffer(pktLen + 4) // 加上head长度
 	if err != nil {
 		// cannot take the buffer. Something must be wrong with the connection
 		errLog.Print(err)
@@ -486,7 +530,7 @@ func (mc *mysqlConn) writeCommandPacketUint32(command byte, arg uint32) error {
 /******************************************************************************
 *                              Result Packets                                 *
 ******************************************************************************/
-
+// 认证的结果报文
 func (mc *mysqlConn) readAuthResult() ([]byte, string, error) {
 	data, err := mc.readPacket()
 	if err != nil {
@@ -499,10 +543,14 @@ func (mc *mysqlConn) readAuthResult() ([]byte, string, error) {
 	case iOK:
 		return nil, "", mc.handleOkPacket(data)
 
-	case iAuthMoreData:
+	case iAuthMoreData: // 额外认证数据
 		return data[1:], "", err
 
 	case iEOF:
+		/*             [fe]
+		string[NUL]    plugin name
+		string[EOF]    auth plugin data
+		*/
 		if len(data) == 1 {
 			// https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::OldAuthSwitchRequest
 			return nil, "mysql_old_password", nil
@@ -535,6 +583,7 @@ func (mc *mysqlConn) readResultOK() error {
 
 // Result Set Header Packet
 // http://dev.mysql.com/doc/internals/en/com-query-response.html#packet-ProtocolText::Resultset
+// 获取查询的结果集
 func (mc *mysqlConn) readResultSetHeaderPacket() (int, error) {
 	data, err := mc.readPacket()
 	if err == nil {
@@ -550,7 +599,7 @@ func (mc *mysqlConn) readResultSetHeaderPacket() (int, error) {
 			return 0, mc.handleInFileRequest(string(data[1:]))
 		}
 
-		// column count
+		// column count 列数
 		num, _, n := readLengthEncodedInteger(data)
 		if n-len(data) == 0 {
 			return int(num), nil
@@ -563,18 +612,21 @@ func (mc *mysqlConn) readResultSetHeaderPacket() (int, error) {
 
 // Error Packet
 // http://dev.mysql.com/doc/internals/en/generic-response-packets.html#packet-ERR_Packet
+// 解析ERR_Packet包，转换成error
 func (mc *mysqlConn) handleErrorPacket(data []byte) error {
 	if data[0] != iERR {
 		return ErrMalformPkt
 	}
 
 	// 0xff [1 byte]
+	// 一个字节0xFF
 
 	// Error Number [16 bit uint]
+	// 两个字节错误码
 	errno := binary.LittleEndian.Uint16(data[1:3])
 
-	// 1792: ER_CANT_EXECUTE_IN_READ_ONLY_TRANSACTION
-	// 1290: ER_OPTION_PREVENTS_STATEMENT (returned by Aurora during failover)
+	// 1792: ER_CANT_EXECUTE_IN_READ_ONLY_TRANSACTION 无法在只读事务中执行语句
+	// 1290: ER_OPTION_PREVENTS_STATEMENT (returned by Aurora during failover) MySQL正使用%s选项运行，因此不能执行该语句。
 	if (errno == 1792 || errno == 1290) && mc.cfg.RejectReadOnly {
 		// Oops; we are connected to a read-only connection, and won't be able
 		// to issue any write statements. Since RejectReadOnly is configured,
@@ -585,44 +637,55 @@ func (mc *mysqlConn) handleErrorPacket(data []byte) error {
 		// We explicitly close the connection before returning
 		// driver.ErrBadConn to ensure that `database/sql` purges this
 		// connection and initiates a new one for next statement next time.
+		// 我们连接到一个只读连接，不能发出任何写语句。因为已经配置了RejectReadOnly，所以我们会丢弃这个连接，希望这个连接有写权限。
+		// 这是专门针对故障转移期间可能出现的竞态条件(例如AWS Aurora)。我们显式地在返回驱动程序之前关闭连接。
+		// ErrBadConn，以确保'database/sql'清除此连接，并为下一次语句启动一个新的连接。
 		mc.Close()
 		return driver.ErrBadConn
 	}
 
 	pos := 3
-
+	// SQL 状态的标记
 	// SQL State [optional: # + 5bytes string]
 	if data[3] == 0x23 {
 		//sqlstate := string(data[4 : 4+5])
+		// SQL 状态
 		pos = 9
 	}
 
 	// Error Message [string]
+	// 人类可读的错误信息
 	return &MySQLError{
 		Number:  errno,
 		Message: string(data[pos:]),
 	}
 }
 
+// 从响应中解析状态信息 2个字节
 func readStatus(b []byte) statusFlag {
 	return statusFlag(b[0]) | statusFlag(b[1])<<8
 }
 
 // Ok Packet
 // http://dev.mysql.com/doc/internals/en/generic-response-packets.html#packet-OK_Packet
+// 解析ok包
 func (mc *mysqlConn) handleOkPacket(data []byte) error {
 	var n, m int
 
 	// 0x00 [1 byte]
+	// 第一个字节固定 0x00
 
 	// Affected rows [Length Coded Binary]
+	// 受影响的行
 	mc.affectedRows, _, n = readLengthEncodedInteger(data[1:])
 
 	// Insert id [Length Coded Binary]
+	// 最后插入的ID
 	mc.insertId, _, m = readLengthEncodedInteger(data[1+n:])
 
 	// server_status [2 bytes]
 	mc.status = readStatus(data[1+n+m : 1+n+m+2])
+	// 没有更多的响应内容了
 	if mc.status&statusMoreResultsExists != 0 {
 		return nil
 	}
@@ -734,6 +797,7 @@ func (mc *mysqlConn) readColumns(count int) ([]mysqlField, error) {
 
 // Read Packets as Field Packets until EOF-Packet or an Error appears
 // http://dev.mysql.com/doc/internals/en/com-query-response.html#packet-ProtocolText::ResultsetRow
+// 解析响应的结果集数据，一次读取一行，按字段值拆分到dest
 func (rows *textRows) readRow(dest []driver.Value) error {
 	mc := rows.mc
 
@@ -746,7 +810,7 @@ func (rows *textRows) readRow(dest []driver.Value) error {
 		return err
 	}
 
-	// EOF Packet
+	// EOF Packet 最后的eof报文
 	if data[0] == iEOF && len(data) == 5 {
 		// server_status [2 bytes]
 		rows.mc.status = readStatus(data[3:])
@@ -775,6 +839,7 @@ func (rows *textRows) readRow(dest []driver.Value) error {
 				if !mc.parseTime {
 					continue
 				} else {
+					// 日期时间类型转换成time.time
 					switch rows.rs.columns[i].fieldType {
 					case fieldTypeTimestamp, fieldTypeDateTime,
 						fieldTypeDate, fieldTypeNewDate:
@@ -802,6 +867,7 @@ func (rows *textRows) readRow(dest []driver.Value) error {
 }
 
 // Reads Packets until EOF-Packet or an Error appears. Returns count of Packets read
+// 读取数据包，直到EOF-Packet或错误出现。丢弃此包不处理
 func (mc *mysqlConn) readUntilEOF() error {
 	for {
 		data, err := mc.readPacket()

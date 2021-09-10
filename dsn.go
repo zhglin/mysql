@@ -34,10 +34,14 @@ var (
 // If a new Config is created instead of being parsed from a DSN string,
 // the NewConfig function should be used, which sets default values.
 type Config struct {
-	User             string            // Username
-	Passwd           string            // Password (requires User)
-	Net              string            // Network type
-	Addr             string            // Network address (requires Net)
+	User string // Username
+	// 用户密码
+	Passwd string // Password (requires User)
+	// 网络类型 tcp udp
+	Net string // Network type
+	// ip:端口号
+	Addr string // Network address (requires Net)
+	// 数据库名
 	DBName           string            // Database name
 	Params           map[string]string // Connection parameters
 	Collation        string            // Connection collation 连接使用的排序
@@ -45,23 +49,24 @@ type Config struct {
 	MaxAllowedPacket int               // Max packet size allowed 允许的最大数据包大小
 	ServerPubKey     string            // Server public key name
 	pubKey           *rsa.PublicKey    // Server public key
-	TLSConfig        string            // TLS configuration name
-	tls              *tls.Config       // TLS configuration
-	Timeout          time.Duration     // Dial timeout
-	ReadTimeout      time.Duration     // I/O read timeout
-	WriteTimeout     time.Duration     // I/O write timeout
+	TLSConfig        string            // TLS configuration name TLS配置名称
+	tls              *tls.Config       // TLS configuration TLS相关配置
+
+	Timeout      time.Duration // Dial timeout	建立链接的超时时间
+	ReadTimeout  time.Duration // I/O read timeout
+	WriteTimeout time.Duration // I/O write timeout
 
 	AllowAllFiles           bool // Allow all files to be used with LOAD DATA LOCAL INFILE
-	AllowCleartextPasswords bool // Allows the cleartext client side plugin
+	AllowCleartextPasswords bool // Allows the cleartext client side plugin 允许明文客户端插件
 	AllowNativePasswords    bool // Allows the native password authentication method 允许本机密码验证方法
-	AllowOldPasswords       bool // Allows the old insecure password method
+	AllowOldPasswords       bool // Allows the old insecure password method 允许不安全的旧密码方法
 	CheckConnLiveness       bool // Check connections for liveness before using them 在使用之前检查连接是否活跃
-	ClientFoundRows         bool // Return number of matching rows instead of rows changed
+	ClientFoundRows         bool // Return number of matching rows instead of rows changed 返回匹配的行数，而不是更改的行数
 	ColumnsWithAlias        bool // Prepend table alias to column names
 	InterpolateParams       bool // Interpolate placeholders into query string
-	MultiStatements         bool // Allow multiple statements in one query
+	MultiStatements         bool // Allow multiple statements in one query 允许在一个查询中包含多个语句
 	ParseTime               bool // Parse time values to time.Time
-	RejectReadOnly          bool // Reject read-only connections
+	RejectReadOnly          bool // Reject read-only connections 是否拒绝只读连接
 }
 
 // NewConfig creates a new Config and sets default values.

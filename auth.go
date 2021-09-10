@@ -188,11 +188,13 @@ func scramblePassword(scramble []byte, password string) []byte {
 }
 
 // Hash password using MySQL 8+ method (SHA256)
+// 对密码进行sha256加密
 func scrambleSHA256Password(scramble []byte, password string) []byte {
 	if len(password) == 0 {
 		return nil
 	}
 
+	// 加密方式
 	// XOR(SHA256(password), SHA256(SHA256(SHA256(password)), scramble))
 
 	crypt := sha256.New()
@@ -234,6 +236,7 @@ func (mc *mysqlConn) sendEncryptedPassword(seed []byte, pub *rsa.PublicKey) erro
 	return mc.writeAuthSwitchPacket(enc)
 }
 
+// 对密码进行加密 plugin指定加密方式
 func (mc *mysqlConn) auth(authData []byte, plugin string) ([]byte, error) {
 	switch plugin {
 	case "caching_sha2_password":
@@ -241,6 +244,7 @@ func (mc *mysqlConn) auth(authData []byte, plugin string) ([]byte, error) {
 		return authResp, nil
 
 	case "mysql_old_password":
+		// 需要单独配置
 		if !mc.cfg.AllowOldPasswords {
 			return nil, ErrOldPassword
 		}
@@ -254,6 +258,7 @@ func (mc *mysqlConn) auth(authData []byte, plugin string) ([]byte, error) {
 		return authResp, nil
 
 	case "mysql_clear_password":
+		// 直接明文传输
 		if !mc.cfg.AllowCleartextPasswords {
 			return nil, ErrCleartextPassword
 		}
@@ -295,14 +300,17 @@ func (mc *mysqlConn) auth(authData []byte, plugin string) ([]byte, error) {
 	}
 }
 
+// 获取认证结果
 func (mc *mysqlConn) handleAuthResult(oldAuthData []byte, plugin string) error {
 	// Read Result Packet
+	// 读取相应报文 authData返回的额外的认证数据 newPlugin返回的认证方式
 	authData, newPlugin, err := mc.readAuthResult()
 	if err != nil {
 		return err
 	}
 
 	// handle auth plugin switch, if requested
+	// 重新处理认证
 	if newPlugin != "" {
 		// If CLIENT_PLUGIN_AUTH capability is not supported, no new cipher is
 		// sent and we have to keep using the cipher sent in the init packet.
@@ -330,6 +338,7 @@ func (mc *mysqlConn) handleAuthResult(oldAuthData []byte, plugin string) error {
 		}
 
 		// Do not allow to change the auth plugin more than once
+		// 不允许超过一次更改认证插件
 		if newPlugin != "" {
 			return ErrMalformPkt
 		}

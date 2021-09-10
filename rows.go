@@ -19,11 +19,12 @@ import (
 type resultSet struct {
 	columns     []mysqlField
 	columnNames []string
-	done        bool
+	done        bool // 是否已读取结束
 }
 
+// 返回的行记录
 type mysqlRows struct {
-	mc     *mysqlConn
+	mc     *mysqlConn // 对应的mysql链接
 	rs     resultSet
 	finish func()
 }
@@ -133,6 +134,7 @@ func (rows *mysqlRows) Close() (err error) {
 	return err
 }
 
+// HasNextResultSet 是否还有更多的数据
 func (rows *mysqlRows) HasNextResultSet() (b bool) {
 	if rows.mc == nil {
 		return false
