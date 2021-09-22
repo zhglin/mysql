@@ -267,7 +267,7 @@ func (executor *deleteExecutor) Execute() (driver.Result, error) {
 }
 
 func (executor *deleteExecutor) PrepareUndoLog(beforeImage, afterImage *schema.TableRecords) {
-	if len(beforeImage.Rows) == 0 {
+	if beforeImage == nil || len(beforeImage.Rows) == 0 {
 		return
 	}
 
@@ -381,7 +381,7 @@ func (executor *updateExecutor) Execute() (driver.Result, error) {
 }
 
 func (executor *updateExecutor) PrepareUndoLog(beforeImage, afterImage *schema.TableRecords) {
-	if len(beforeImage.Rows) == 0 &&
+	if (beforeImage == nil || len(beforeImage.Rows) == 0) &&
 		(afterImage == nil || len(afterImage.Rows) == 0) {
 		return
 	}
@@ -404,7 +404,7 @@ func (executor *updateExecutor) BeforeImage() (*schema.TableRecords, error) {
 }
 
 func (executor *updateExecutor) AfterImage(beforeImage *schema.TableRecords) (*schema.TableRecords, error) {
-	if beforeImage.Rows == nil || len(beforeImage.Rows) == 0 {
+	if beforeImage == nil || len(beforeImage.Rows) == 0 {
 		return nil, nil
 	}
 
@@ -555,7 +555,7 @@ func (executor *globalLockExecutor) Executable(lockRetryInterval time.Duration, 
 		var err error
 		for i := 0; i < lockRetryTimes; i++ {
 			lockable, err = rm.GetResourceManager().LockQuery(context.Background(),
-				"", executor.mc.cfg.DBName, apis.AT, lockKeys )
+				"", executor.mc.cfg.DBName, apis.AT, lockKeys)
 			if lockable && err == nil {
 				return true, nil
 			}
