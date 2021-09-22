@@ -93,6 +93,7 @@ func (mc *mysqlConn) handleParams() (err error) {
 	for param, val := range mc.cfg.Params {
 		switch param {
 		// Charset: character_set_connection, character_set_client, character_set_results
+		// 直接设置链接级的编码 忽略响应报文
 		case "charset":
 			charsets := strings.Split(val, ",")
 			for i := range charsets {
@@ -107,9 +108,11 @@ func (mc *mysqlConn) handleParams() (err error) {
 			}
 
 		// Other system vars accumulated in a single SET command
+		// 在单个SET命令中积累的其他系统变量
 		default:
 			if cmdSet.Len() == 0 {
 				// Heuristic: 29 chars for each other key=value to reduce reallocations
+				// 启发式:每个键值为29个字符，以减少重新分配
 				cmdSet.Grow(4 + len(param) + 1 + len(val) + 30*(len(mc.cfg.Params)-1))
 				cmdSet.WriteString("SET ")
 			} else {
@@ -131,6 +134,7 @@ func (mc *mysqlConn) handleParams() (err error) {
 	return
 }
 
+// 转换error
 func (mc *mysqlConn) markBadConn(err error) error {
 	if mc == nil {
 		return err
@@ -158,6 +162,7 @@ func (mc *mysqlConn) begin(readOnly bool) (driver.Tx, error) {
 	}
 	err := mc.exec(q)
 	if err == nil {
+		// 转换transaction
 		return &mysqlTx{mc}, err
 	}
 	return nil, mc.markBadConn(err)
@@ -244,8 +249,10 @@ func (mc *mysqlConn) Prepare(query string) (driver.Stmt, error) {
 	return stmt, err
 }
 
+// query语句中插入参数
 func (mc *mysqlConn) interpolateParams(query string, args []driver.Value) (string, error) {
 	// Number of ? should be same to len(args)
+	// 占位符数量不一致
 	if strings.Count(query, "?") != len(args) {
 		return "", driver.ErrSkip
 	}
@@ -260,11 +267,13 @@ func (mc *mysqlConn) interpolateParams(query string, args []driver.Value) (strin
 	argPos := 0
 
 	for i := 0; i < len(query); i++ {
+		// 没有占位符 直接跳过
 		q := strings.IndexByte(query[i:], '?')
 		if q == -1 {
 			buf = append(buf, query[i:]...)
 			break
 		}
+
 		buf = append(buf, query[i:i+q]...)
 		i += q
 
@@ -353,6 +362,7 @@ func (mc *mysqlConn) Exec(query string, args []driver.Value) (driver.Result, err
 			return nil, driver.ErrSkip
 		}
 		// try to interpolate the parameters to save extra roundtrips for preparing and closing a statement
+		// 尝试插入参数，以节省准备和关闭语句所需的额外往返
 		prepared, err := mc.interpolateParams(query, args)
 		if err != nil {
 			return nil, err
@@ -425,6 +435,7 @@ func (mc *mysqlConn) execAlways(query string, args []driver.Value) (driver.Resul
 }
 
 // Internal function to execute commands
+// 执行命令的内部功能 接收不处理响应信息
 func (mc *mysqlConn) exec(query string) error {
 	// Send command
 	if err := mc.writeCommandPacketStr(comQuery, query); err != nil {
@@ -624,6 +635,7 @@ func (mc *mysqlConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver
 		}
 	}
 
+	// 开启事务 设置分布式事务信息
 	val := ctx.Value(XID)
 	if val != nil {
 		if xid, ok := val.(string); ok {
@@ -841,6 +853,7 @@ func (mc *mysqlConn) startWatcher() {
 	}()
 }
 
+// CheckNamedValue NamedValueChecker接口实现
 func (mc *mysqlConn) CheckNamedValue(nv *driver.NamedValue) (err error) {
 	nv.Value, err = converter{}.ConvertValue(nv.Value)
 	return

@@ -76,6 +76,7 @@ func (tx *mysqlTx) Commit() (err error) {
 	return
 }
 
+// Rollback 回滚
 func (tx *mysqlTx) Rollback() (err error) {
 	defer func() {
 		if tx.mc != nil {
@@ -89,6 +90,7 @@ func (tx *mysqlTx) Rollback() (err error) {
 	}
 	err = tx.mc.exec("ROLLBACK")
 
+	// 注册并上报分支事务状态
 	if tx.mc.ctx != nil {
 		branchID, err := tx.register()
 		if err != nil {
@@ -100,6 +102,7 @@ func (tx *mysqlTx) Rollback() (err error) {
 	return
 }
 
+// 支持分支事务
 func (tx *mysqlTx) register() (int64, error) {
 	var branchID int64
 	var err error
@@ -122,6 +125,7 @@ func (tx *mysqlTx) register() (int64, error) {
 	return branchID, err
 }
 
+// 上报分支事务状态
 func (tx *mysqlTx) report(commitDone bool) error {
 	retry := config.GetATConfig().LockRetryTimes
 	for retry > 0 {

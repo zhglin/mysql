@@ -27,6 +27,7 @@ func describeNamedValue(nv *driver.NamedValue) string {
 	return fmt.Sprintf("with name %q", nv.Name)
 }
 
+// 检查首字符是否是字母
 func validateNamedValueName(name string) error {
 	if len(name) == 0 {
 		return nil
@@ -111,6 +112,7 @@ func driverArgsConnLocked(ci driver.Conn, ds *driverStmt, args []interface{}) ([
 	// -1 means the driver doesn't know how to count the number of
 	// placeholders, so we won't sanity check input here and instead let the
 	// driver deal with errors.
+	// -1表示驱动程序不知道如何计算占位符的数量，所以我们不会在这里检查输入，而是让驱动程序处理错误。
 	want := -1
 
 	var si driver.Stmt
@@ -125,6 +127,7 @@ func driverArgsConnLocked(ci driver.Conn, ds *driverStmt, args []interface{}) ([
 	// Drivers may opt to use the NamedValueChecker for special
 	// argument types, then return driver.ErrSkip to pass it along
 	// to the column converter.
+	// 从一开始检查所有类型的接口。驱动程序可以选择使用NamedValueChecker用于特殊的参数类型，然后返回驱动程序。ErrSkip将其传递给列转换器。
 	nvc, ok := si.(driver.NamedValueChecker)
 	if !ok {
 		nvc, ok = ci.(driver.NamedValueChecker)
@@ -139,6 +142,8 @@ func driverArgsConnLocked(ci driver.Conn, ds *driverStmt, args []interface{}) ([
 	// and continue. However if driver.ErrRemoveArgument
 	// is returned the argument is not included in the query
 	// argument list.
+	// 循环遍历所有参数，检查每个参数。
+	// 如果没有返回错误，只需增加索引并继续。如果查询参数列表中没有包含参数，则返回ErrRemoveArgument。
 	var err error
 	var n int
 	for _, arg := range args {

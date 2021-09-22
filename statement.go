@@ -10,9 +10,9 @@ package mysql
 
 import (
 	//"database/sql/driver"
-	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"github.com/opentrx/mysql/v2/pkg/database/sql/driver"
 	"io"
 	"reflect"
 
@@ -270,6 +270,7 @@ var valuerReflectType = reflect.TypeOf((*driver.Valuer)(nil)).Elem()
 // If vr.Value is an auto-generated method on a pointer type and the
 // pointer is nil, it would panic at runtime in the panicwrap
 // method. Treat it like nil instead.
+// 返回vr.value()，但有一个例外:Value是指针类型上的自动生成方法，并且指针为nil，在panicwrap方法中，它会在运行时出现panic。把它当成nil。
 //
 // This is so people can implement driver.Value on value types and
 // still use nil pointers to those types to mean nil/NULL, just like

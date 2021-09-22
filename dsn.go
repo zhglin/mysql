@@ -63,7 +63,7 @@ type Config struct {
 	CheckConnLiveness       bool // Check connections for liveness before using them 在使用之前检查连接是否活跃
 	ClientFoundRows         bool // Return number of matching rows instead of rows changed 返回匹配的行数，而不是更改的行数
 	ColumnsWithAlias        bool // Prepend table alias to column names
-	InterpolateParams       bool // Interpolate placeholders into query string
+	InterpolateParams       bool // Interpolate placeholders into query string 是否允许插入占位符到查询字符串中
 	MultiStatements         bool // Allow multiple statements in one query 允许在一个查询中包含多个语句
 	ParseTime               bool // Parse time values to time.Time
 	RejectReadOnly          bool // Reject read-only connections 是否拒绝只读连接

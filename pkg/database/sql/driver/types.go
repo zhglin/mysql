@@ -173,6 +173,7 @@ func (n NotNull) ConvertValue(v interface{}) (Value, error) {
 }
 
 // IsValue reports whether v is a valid Value parameter type.
+// 报告v是否为有效的Value参数类型。
 func IsValue(v interface{}) bool {
 	if v == nil {
 		return true
@@ -180,7 +181,7 @@ func IsValue(v interface{}) bool {
 	switch v.(type) {
 	case []byte, bool, float64, int64, string, time.Time:
 		return true
-	case decimalDecompose:
+	case decimalDecompose: // 实现了decimalDecompose接口
 		return true
 	}
 	return false
@@ -238,8 +239,9 @@ func (defaultConverter) ConvertValue(v interface{}) (Value, error) {
 		return v, nil
 	}
 
+	// 非IsValue类型
 	switch vr := v.(type) {
-	case Valuer:
+	case Valuer: // 实现了valuer接口
 		sv, err := callValuerValue(vr)
 		if err != nil {
 			return nil, err
